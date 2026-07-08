@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { existsSync } from "fs";
-import { pickChar, luminance, frameToText, frameToHalfBlocks, fitToTerminal, fitPixelsToTerminal, fmtTime } from "./jazz.ts";
+import { pickChar, luminance, frameToText, frameToQuadrants, kittyFrame, fitToTerminal, fitGraphics, fmtTime } from "./jazz.ts";
 
 const VIDEO = "/Users/nick/Developer/video-player/batman-jazz.mp4";
 
@@ -32,20 +32,49 @@ test("frameToText paints cells and pads lines", () => {
   expect(text.endsWith("\x1b[0m")).toBe(true);
 });
 
-test("fitPixelsToTerminal packs two even pixels per cell row", () => {
-  const { w, h } = fitPixelsToTerminal(1920, 1080, 100, 40);
-  expect(w).toBeLessThanOrEqual(100);
-  expect(h).toBeLessThanOrEqual(80); // two pixels per cell row
-  expect(h % 2).toBe(0);
+test("frameToQuadrants splits a cell into bright and dark pixels", () => {
+  // one 2x2 cell: white top row, black bottom row → ▀ with white fg, black bg
+  const rgb = new Uint8Array([255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0]);
+  const text = frameToQuadrants(rgb, 2, 2, 0);
+  expect(stripAnsi(text)).toBe("▀");
+  expect(text).toContain("38;2;248;248;248"); // bright pair averaged into fg
+  expect(text).toContain("48;2;0;0;0"); // dark pair averaged into bg
 });
 
-test("frameToHalfBlocks colors top and bottom pixels of one cell", () => {
-  // one column, two rows: red on top, blue below → a single ▀ cell
-  const rgb = new Uint8Array([255, 0, 0, 0, 0, 255]);
-  const text = frameToHalfBlocks(rgb, 1, 2, 0);
-  expect(stripAnsi(text)).toBe("▀");
-  expect(text).toContain("38;2;248;0;0"); // top pixel = foreground
-  expect(text).toContain("48;2;0;0;248"); // bottom pixel = background
+test("kittyFrame emits a single well-formed chunk for a tiny frame", () => {
+  const rgb = new Uint8Array([255, 0, 0]); // one red pixel
+  const s = kittyFrame(rgb, 1, 1, 2, 1);
+  expect(s.startsWith("\x1b_Ga=T,f=24,i=1,q=2,C=1,s=1,v=1,c=2,r=1,m=0;")).toBe(true);
+  expect(s.endsWith("\x1b\\")).toBe(true);
+});
+
+test("kittyFrame chunks large frames at 4096 bytes of payload", () => {
+  const rgb = new Uint8Array(9000); // → 12000 base64 chars → 3 chunks
+  const s = kittyFrame(rgb, 60, 50, 10, 5);
+  const chunks = s.split("\x1b\\").filter(Boolean);
+  expect(chunks.length).toBe(3);
+  expect(chunks[1].startsWith("\x1b_Gm=1;")).toBe(true);
+  expect(chunks[2].startsWith("\x1b_Gm=0;")).toBe(true);
+  for (const c of chunks) {
+    expect(c.split(";")[1].length).toBeLessThanOrEqual(4096);
+  }
+});
+
+test("fitGraphics fits pixels and reports the cell rect", () => {
+  // 100x40 cells of 10x20 px → 1000x800 px area; 16:9 video → 1000x563
+  const g = fitGraphics(1920, 1080, 100, 40, 10, 20);
+  expect(g.w).toBe(1000);
+  expect(g.h).toBe(563);
+  expect(g.c).toBe(100);
+  expect(g.r).toBe(29); // ceil(563/20)
+  expect(g.padLeft).toBe(0);
+});
+
+test("fitGraphics caps transmitted width at 1280", () => {
+  // huge terminal: 400 cells * 10px = 4000px wide
+  const g = fitGraphics(1920, 1080, 400, 120, 10, 20);
+  expect(g.w).toBe(1280);
+  expect(g.c).toBeGreaterThan(200); // display rect still spans the terminal
 });
 
 test("fitToTerminal keeps the video inside the terminal", () => {

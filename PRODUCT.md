@@ -1,21 +1,22 @@
 # jazz
 
-A terminal focus-video player, built from the ground up. `jazz` plays the
-batman jazz video as colored ASCII art inside the terminal: ffmpeg decodes
-contrast-normalized RGB frames (so dark movie scenes stay readable), jazz.ts
-maps each pixel's brightness to a character and paints it with the pixel's
-own color via truecolor escapes, while ffplay plays the audio invisibly in
-the background. Loops forever. `jazz <file>` plays any other video the same
-way. Resolution equals the terminal grid: shrink the font (cmd+minus in
-Ghostty) before launching for a sharper picture.
+A terminal focus-video player, built from the ground up. ffmpeg decodes
+contrast-normalized RGB frames while ffplay plays the audio invisibly in the
+background; jazz.ts renders the frames into the terminal itself. Loops
+forever. `jazz <file>` plays any other video the same way.
+
+Three rendering modes:
+- `jazz` (default) — real pixels via the Kitty graphics protocol (Ghostty):
+  frames are base64-chunked RGB transmitted with a reused image id, scaled by
+  the terminal into the pane. Cell pixel size is queried with CSI 16 t.
+- `jazz --hd` — quadrant blocks (▘▀▟…), 2x2 pixels per cell: 4x the detail of
+  ASCII while still being text.
+- `jazz --ascii` — painted ASCII art: brightness picks the character, the
+  cell is painted with the pixel's color (dim background, bright glyph).
 
 Controls: space pause/resume, ←/→ seek ±10s, q quit. Resizing the terminal
 refits the picture automatically. A dim status line shows state, file, and
 elapsed/total time.
-
-`jazz --hd` switches from ASCII to half-block rendering (▀ cells with
-independent top/bottom colors): double the vertical resolution, reads as a
-pixelated image rather than text art.
 
 Dependencies: bun, ffmpeg (which provides ffprobe and ffplay). No mpv.
 

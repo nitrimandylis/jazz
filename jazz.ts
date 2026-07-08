@@ -68,46 +68,91 @@ export function frameToText(rgb: Uint8Array, w: number, h: number, padLeft: numb
   return lines.join("\n");
 }
 
-// --hd mode: each cell holds two vertically stacked pixels (a ▀ block with
-// separate top/bottom colors), so the pixel grid is cols wide and 2*rows
-// tall, and each pixel is roughly square.
-export function fitPixelsToTerminal(videoW: number, videoH: number, cols: number, rows: number) {
-  const aspect = videoW / videoH;
-  let w = cols;
-  let h = Math.round(w / aspect);
-  if (h > rows * 2) {
-    h = rows * 2;
-    w = Math.round(h * aspect);
-  }
-  w = Math.max(1, Math.min(cols, w));
-  h = Math.max(2, 2 * Math.floor(h / 2)); // two pixels per cell: keep h even
-  const padLeft = Math.max(0, Math.floor((cols - w) / 2));
-  return { w, h, padLeft };
-}
+// --hd mode: each cell holds a 2x2 block of pixels rendered as a quadrant
+// character (▘▀▐▟…) with two colors: bright pixels average into the
+// foreground, dark ones into the background.
+const QUAD = [" ", "▘", "▝", "▀", "▖", "▌", "▞", "▛", "▗", "▚", "▐", "▜", "▄", "▙", "▟", "█"];
 
-// Render a frame as half-block "pixels": one ▀ per cell, foreground colors
-// the top pixel and background colors the bottom pixel.
-export function frameToHalfBlocks(rgb: Uint8Array, w: number, h: number, padLeft: number): string {
+export function frameToQuadrants(rgb: Uint8Array, pw: number, ph: number, padLeft: number): string {
   const pad = " ".repeat(padLeft);
   const lines: string[] = [];
-  for (let cy = 0; cy < h / 2; cy++) {
+  for (let cy = 0; cy < ph / 2; cy++) {
     let line = pad;
     let prevColor = "";
-    for (let x = 0; x < w; x++) {
-      const t = (cy * 2 * w + x) * 3; // top pixel
-      const b = ((cy * 2 + 1) * w + x) * 3; // bottom pixel
-      const color =
-        `\x1b[38;2;${rgb[t] & ~7};${rgb[t + 1] & ~7};${rgb[t + 2] & ~7};` +
-        `48;2;${rgb[b] & ~7};${rgb[b + 1] & ~7};${rgb[b + 2] & ~7}m`;
+    for (let cx = 0; cx < pw / 2; cx++) {
+      // the cell's four pixels: top-left, top-right, bottom-left, bottom-right
+      const idx = [
+        (cy * 2 * pw + cx * 2) * 3,
+        (cy * 2 * pw + cx * 2 + 1) * 3,
+        ((cy * 2 + 1) * pw + cx * 2) * 3,
+        ((cy * 2 + 1) * pw + cx * 2 + 1) * 3,
+      ];
+      const lums = idx.map((i) => luminance(rgb[i], rgb[i + 1], rgb[i + 2]));
+      const avg = (lums[0] + lums[1] + lums[2] + lums[3]) / 4;
+      let bits = 0;
+      for (let p = 0; p < 4; p++) if (lums[p] > avg) bits |= 1 << p;
+      // average bright pixels into the glyph color, dark into the background
+      let fr = 0, fg = 0, fb = 0, fn = 0;
+      let br = 0, bg = 0, bb = 0, bn = 0;
+      for (let p = 0; p < 4; p++) {
+        const i = idx[p];
+        if (bits & (1 << p)) { fr += rgb[i]; fg += rgb[i + 1]; fb += rgb[i + 2]; fn++; }
+        else { br += rgb[i]; bg += rgb[i + 1]; bb += rgb[i + 2]; bn++; }
+      }
+      const q = (sum: number, n: number) => (n ? Math.round(sum / n) & ~7 : 0);
+      const color = `\x1b[38;2;${q(fr, fn)};${q(fg, fn)};${q(fb, fn)};48;2;${q(br, bn)};${q(bg, bn)};${q(bb, bn)}m`;
       if (color !== prevColor) {
         line += color;
         prevColor = color;
       }
-      line += "▀"; // ▀
+      line += QUAD[bits];
     }
     lines.push(line + "\x1b[0m");
   }
   return lines.join("\n");
+}
+
+// Default mode: real pixels via the Kitty graphics protocol (Ghostty speaks
+// it). One frame = the raw RGB bytes base64-encoded and sent in <=4096-byte
+// chunks, as the spec requires. Re-using image id 1 every frame makes the
+// terminal replace the previous frame in place. C=1 keeps the cursor put.
+export function kittyFrame(rgb: Uint8Array, w: number, h: number, c: number, r: number): string {
+  const b64 = Buffer.from(rgb).toString("base64");
+  const parts: string[] = [];
+  for (let i = 0; i < b64.length; i += 4096) {
+    const chunk = b64.slice(i, i + 4096);
+    const m = i + 4096 >= b64.length ? 0 : 1;
+    if (i === 0) {
+      parts.push(`\x1b_Ga=T,f=24,i=1,q=2,C=1,s=${w},v=${h},c=${c},r=${r},m=${m};${chunk}\x1b\\`);
+    } else {
+      parts.push(`\x1b_Gm=${m};${chunk}\x1b\\`);
+    }
+  }
+  return parts.join("");
+}
+
+// Fit the video into the terminal's pixel area. w/h is the transmitted image
+// size; c/r is the cell rectangle the terminal scales it into.
+export function fitGraphics(videoW: number, videoH: number, cols: number, rows: number, cellW: number, cellH: number) {
+  const aspect = videoW / videoH;
+  let w = cols * cellW;
+  let h = Math.round(w / aspect);
+  if (h > rows * cellH) {
+    h = rows * cellH;
+    w = Math.round(h * aspect);
+  }
+  w = Math.max(1, w);
+  h = Math.max(1, h);
+  const c = Math.max(1, Math.min(cols, Math.ceil(w / cellW)));
+  const r = Math.max(1, Math.min(rows, Math.ceil(h / cellH)));
+  // ponytail: cap the transmitted width to bound escape-stream throughput;
+  // the terminal scales it up to the c/r rect. Lower the cap if it stutters.
+  if (w > 1280) {
+    h = Math.max(1, Math.round(h * (1280 / w)));
+    w = 1280;
+  }
+  const padLeft = Math.max(0, Math.floor((cols - c) / 2));
+  return { w, h, c, r, padLeft };
 }
 
 // Work out how many character cells the video should occupy.
@@ -169,9 +214,31 @@ function drawStatus(elapsed: number, duration: number, paused: boolean, cols: nu
   process.stdout.write(`\x1b[${row};1H\x1b[2m${line}\x1b[0m`);
 }
 
+// Ask the terminal for its cell size in pixels (CSI 16 t, answered by
+// Ghostty). Falls back to a 2:1 guess if there's no reply within 250ms.
+async function queryCellSize(): Promise<{ width: number; height: number }> {
+  return await new Promise((resolve) => {
+    const timer = setTimeout(() => done({ width: 8, height: 16 }), 250);
+    function onData(chunk: Buffer) {
+      const m = chunk.toString().match(/\x1b\[6;(\d+);(\d+)t/);
+      if (m) done({ height: parseInt(m[1]), width: parseInt(m[2]) });
+    }
+    function done(size: { width: number; height: number }) {
+      clearTimeout(timer);
+      process.stdin.off("data", onData);
+      resolve(size);
+    }
+    process.stdin.on("data", onData);
+    process.stdout.write("\x1b[16t");
+  });
+}
+
 async function main() {
-  const hd = process.argv.includes("--hd"); // half-block pixels, 2x vertical detail
-  const video = process.argv.slice(2).find((a) => a !== "--hd") ?? DEFAULT_VIDEO;
+  const args = process.argv.slice(2);
+  // rendering mode: real pixels by default, --ascii for painted text art,
+  // --hd for quadrant blocks (2x2 pixels per cell)
+  const mode = args.includes("--ascii") ? "ascii" : args.includes("--hd") ? "hd" : "pixels";
+  const video = args.find((a) => !a.startsWith("--")) ?? DEFAULT_VIDEO;
   if (!existsSync(video)) {
     console.error(`jazz: no such file: ${video}`);
     process.exit(1);
@@ -184,6 +251,7 @@ async function main() {
   process.stdout.write("\x1b[?1049h\x1b[2J\x1b[?25l");
   process.stdin.setRawMode(true);
   process.stdin.resume();
+  const cell = mode === "pixels" ? await queryCellSize() : { width: 8, height: 16 };
 
   let paused = false;
   let quit = false;
@@ -194,6 +262,7 @@ async function main() {
 
   function cleanup() {
     try { process.stdin.setRawMode(false); } catch {}
+    if (mode === "pixels") process.stdout.write("\x1b_Ga=d,d=A,q=2\x1b\\"); // delete kitty images
     process.stdout.write("\x1b[?25h\x1b[?1049l"); // show cursor, leave alternate screen
     decoder?.kill();
     audio?.kill();
@@ -244,9 +313,16 @@ async function main() {
     // || not ??: some ptys report 0x0, which must also fall back.
     cols = process.stdout.columns || 80;
     totalRows = process.stdout.rows || 24;
-    const { w, h, padLeft } = hd
-      ? fitPixelsToTerminal(info.width, info.height, cols, totalRows - 1)
-      : fitToTerminal(info.width, info.height, cols, totalRows - 1);
+    let w: number, h: number, padLeft: number;
+    let kittyC = 0, kittyR = 0; // cell rect the terminal scales pixels into
+    if (mode === "pixels") {
+      const g = fitGraphics(info.width, info.height, cols, totalRows - 1, cell.width, cell.height);
+      w = g.w; h = g.h; padLeft = g.padLeft; kittyC = g.c; kittyR = g.r;
+    } else {
+      const f = fitToTerminal(info.width, info.height, cols, totalRows - 1);
+      const scale = mode === "hd" ? 2 : 1; // quadrants pack 2x2 pixels per cell
+      w = f.w * scale; h = f.h * scale; padLeft = f.padLeft;
+    }
     const frameSize = w * h * 3; // rgb24: three bytes per pixel
     if (resized) {
       resized = false;
@@ -305,10 +381,11 @@ async function main() {
         if (wait > 0) await Bun.sleep(wait);
         else if (wait < -frameMs) continue; // ponytail: drop-to-catch-up is the whole sync strategy
 
-        const text = hd
-          ? frameToHalfBlocks(frame, w, h, padLeft)
-          : frameToText(frame, w, h, padLeft);
-        process.stdout.write("\x1b[H" + text);
+        const text =
+          mode === "pixels" ? `\x1b[1;${padLeft + 1}H` + kittyFrame(frame, w, h, kittyC, kittyR)
+          : mode === "hd" ? "\x1b[H" + frameToQuadrants(frame, w, h, padLeft)
+          : "\x1b[H" + frameToText(frame, w, h, padLeft);
+        process.stdout.write(text);
         drawStatus(position + frames / FPS, info.duration, false, cols, totalRows, basename(video));
         if (frames % FPS === 0) {
           debugLog(`t=${Math.round(performance.now() - start)}ms frames=${frames} late=${Math.round(-wait)}ms textBytes=${text.length} buf=${buf.length} rss=${Math.round(process.memoryUsage.rss() / 1e6)}MB`);
