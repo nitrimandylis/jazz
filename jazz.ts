@@ -34,8 +34,10 @@ export function pickChar(lum: number): string {
   return RAMP[index];
 }
 
-// Turn one raw frame (w*h*3 RGB bytes) into lines of text, each character
-// colored with its pixel's RGB, left-padded so the picture sits centered.
+// Turn one raw frame (w*h*3 RGB bytes) into lines of text. Each cell is
+// "painted": background = the pixel dimmed, glyph = the pixel brightened,
+// so the full cell shows color while the ASCII texture stays readable.
+// Lines are left-padded so the picture sits centered.
 export function frameToText(rgb: Uint8Array, w: number, h: number, padLeft: number): string {
   const pad = " ".repeat(padLeft);
   const lines: string[] = [];
@@ -46,13 +48,15 @@ export function frameToText(rgb: Uint8Array, w: number, h: number, padLeft: numb
       const i = (y * w + x) * 3;
       const r = rgb[i], g = rgb[i + 1], b = rgb[i + 2];
       const ch = pickChar(luminance(r, g, b));
-      if (ch === " ") { // blank cells need no color code
-        line += " ";
-        continue;
-      }
-      // Quantize each channel to steps of 8 so runs of similar pixels can
-      // share one escape code instead of emitting one per character.
-      const color = `\x1b[38;2;${r & ~7};${g & ~7};${b & ~7}m`;
+      // Quantize channels to steps of 16 so runs of similar pixels share one
+      // escape code instead of emitting ~38 bytes per character.
+      const fr = Math.min(255, Math.round(r * 1.25) + 24) & ~15; // glyph: brightened
+      const fg = Math.min(255, Math.round(g * 1.25) + 24) & ~15;
+      const fb = Math.min(255, Math.round(b * 1.25) + 24) & ~15;
+      const br = Math.round(r * 0.4) & ~15; // background: dimmed
+      const bg = Math.round(g * 0.4) & ~15;
+      const bb = Math.round(b * 0.4) & ~15;
+      const color = `\x1b[38;2;${fr};${fg};${fb};48;2;${br};${bg};${bb}m`;
       if (color !== prevColor) {
         line += color;
         prevColor = color;

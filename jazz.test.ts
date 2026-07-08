@@ -19,12 +19,16 @@ test("pickChar maps dark to blank and bright to dense", () => {
   expect(pickChar(255)).toBe("@");
 });
 
-test("frameToText colors bright pixels and pads lines", () => {
+test("frameToText paints cells and pads lines", () => {
   // one row: a black pixel then a white pixel, padded by one column
   const rgb = new Uint8Array([0, 0, 0, 255, 255, 255]);
   const text = frameToText(rgb, 2, 1, 1);
   expect(stripAnsi(text)).toBe("  @");
-  expect(text).toContain("\x1b[38;2;248;248;248m"); // white, quantized to steps of 8
+  // white pixel: glyph brightened to 240 (quantized /16), background dimmed to 96
+  expect(text).toContain("38;2;240;240;240");
+  expect(text).toContain("48;2;96;96;96");
+  // black pixel still gets a painted (black) background
+  expect(text).toContain("48;2;0;0;0");
   expect(text.endsWith("\x1b[0m")).toBe(true);
 });
 
