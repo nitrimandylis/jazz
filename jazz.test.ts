@@ -2,7 +2,8 @@ import { test, expect } from "bun:test";
 import { existsSync } from "fs";
 import { pickChar, luminance, frameToText, frameToQuadrants, kittyFrame, fitToTerminal, fitGraphics, fmtTime } from "./jazz.ts";
 
-const VIDEO = "/Users/nick/Developer/video-player/batman-jazz.mp4";
+import { homedir } from "os";
+const VIDEO = `${homedir()}/.config/jazz/batman-jazz.mp4`;
 
 function stripAnsi(s: string): string {
   return s.replace(/\x1b\[[0-9;]*m/g, "");

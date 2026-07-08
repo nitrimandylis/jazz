@@ -1,22 +1,25 @@
 #!/usr/bin/env bun
-// jazz — colored ASCII focus-video player for the terminal.
+// jazz — focus-video player for the terminal.
 // ffmpeg decodes the video into raw RGB frames (contrast-normalized so dark
-// movie scenes still have detail), we draw each frame as text characters
-// colored with the pixel's own RGB via truecolor escapes, and ffplay plays
-// the audio invisibly in the background.
+// movie scenes still have detail) and ffplay plays the audio invisibly in
+// the background. Frames render as real pixels (Kitty graphics protocol) by
+// default, quadrant blocks with --hd, or painted ASCII with --ascii.
 //
-// Usage: jazz [file]   (defaults to the batman jazz video)
-// Keys:  space = pause/resume, q = quit
+// Usage: jazz [--hd|--ascii] [file]
+//        With no file: plays from ~/.config/jazz (fzf picker if several).
+// Keys:  space = pause/resume, ←/→ = seek ±10s, q = quit
 
-import { existsSync, appendFileSync } from "fs";
+import { existsSync, appendFileSync, readdirSync, mkdirSync } from "fs";
 import { basename } from "path";
+import { homedir } from "os";
 
 // Debug instrumentation: JAZZ_LOG=/path/to/file jazz ... writes timing lines.
 function debugLog(line: string) {
   if (process.env.JAZZ_LOG) appendFileSync(process.env.JAZZ_LOG, line + "\n");
 }
 
-const DEFAULT_VIDEO = "/Users/nick/Developer/video-player/batman-jazz.mp4";
+const LIBRARY = `${homedir()}/.config/jazz`; // where the focus videos live
+const VIDEO_EXTS = [".mp4", ".mkv", ".mov", ".webm", ".m4v"];
 const FPS = 12; // ponytail: fixed frame rate; make it a flag if 12 ever feels wrong
 const RAMP = " .,:;i1tfLCG08@"; // darkest → brightest (dense chars read as bright on a dark theme)
 const GAMMA = 0.7; // < 1 lifts shadows: dark pixels get real characters, not just dots
@@ -233,12 +236,41 @@ async function queryCellSize(): Promise<{ width: number; height: number }> {
   });
 }
 
+// No path given: play from ~/.config/jazz. One video plays directly;
+// several bring up an fzf picker.
+function pickFromLibrary(): string {
+  mkdirSync(LIBRARY, { recursive: true });
+  const videos = readdirSync(LIBRARY)
+    .filter((f) => VIDEO_EXTS.some((ext) => f.toLowerCase().endsWith(ext)))
+    .sort();
+  if (videos.length === 0) {
+    console.error(`jazz: no videos in ${LIBRARY} — drop some there, or pass a path`);
+    process.exit(1);
+  }
+  if (videos.length === 1) return `${LIBRARY}/${videos[0]}`;
+  if (!Bun.which("fzf")) {
+    console.error(`jazz: several videos in ${LIBRARY} but fzf isn't installed (brew install fzf)`);
+    process.exit(1);
+  }
+  // no --height: fzf's inline mode needs a cursor-position reply some
+  // environments never send; fullscreen works everywhere
+  const fzf = Bun.spawnSync(["fzf", "--prompt", "jazz> ", "--reverse"], {
+    stdin: Buffer.from(videos.join("\n")),
+    stdout: "pipe",
+    stderr: "inherit",
+  });
+  const choice = fzf.stdout.toString().trim();
+  debugLog(`fzf: exit=${fzf.exitCode} choice=${JSON.stringify(choice)}`);
+  if (!choice) process.exit(0); // picker cancelled
+  return `${LIBRARY}/${choice}`;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   // rendering mode: real pixels by default, --ascii for painted text art,
   // --hd for quadrant blocks (2x2 pixels per cell)
   const mode = args.includes("--ascii") ? "ascii" : args.includes("--hd") ? "hd" : "pixels";
-  const video = args.find((a) => !a.startsWith("--")) ?? DEFAULT_VIDEO;
+  const video = args.find((a) => !a.startsWith("--")) ?? pickFromLibrary();
   if (!existsSync(video)) {
     console.error(`jazz: no such file: ${video}`);
     process.exit(1);

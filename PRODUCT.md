@@ -3,7 +3,11 @@
 A terminal focus-video player, built from the ground up. ffmpeg decodes
 contrast-normalized RGB frames while ffplay plays the audio invisibly in the
 background; jazz.ts renders the frames into the terminal itself. Loops
-forever. `jazz <file>` plays any other video the same way.
+forever.
+
+Videos live in ~/.config/jazz. Bare `jazz` plays the only video there, or
+brings up an fzf picker when there are several. `jazz <path>` plays any file
+outside the library.
 
 Three rendering modes:
 - `jazz` (default) — real pixels via the Kitty graphics protocol (Ghostty):
