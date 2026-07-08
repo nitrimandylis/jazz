@@ -9,11 +9,12 @@ the background. Loops forever. `jazz <file>` plays any other video the same
 way. Resolution equals the terminal grid: shrink the font (cmd+minus in
 Ghostty) before launching for a sharper picture.
 
-Controls: space pause/resume, q quit. A dim status line shows state, file,
-and elapsed/total time.
+Controls: space pause/resume, ←/→ seek ±10s, q quit. Resizing the terminal
+refits the picture automatically. A dim status line shows state, file, and
+elapsed/total time.
 
 Dependencies: bun, ffmpeg (which provides ffprobe and ffplay). No mpv.
 
 ## Where it's headed
-- Nothing planned. Possible later: seek keys, resize handling, audio-only
-  mode, color ASCII — add them when they're actually wanted.
+- Nothing planned. Possible later: remember position across launches,
+  audio-only mode — add them when they're actually wanted.

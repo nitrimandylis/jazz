@@ -75,7 +75,9 @@ export function fitToTerminal(videoW: number, videoH: number, cols: number, rows
     h = rows;
     w = Math.round(h * 2 * aspect);
   }
-  const padLeft = Math.floor((cols - w) / 2);
+  w = Math.max(1, w); // a degenerate terminal size must never produce a 0- or
+  h = Math.max(1, h); // negative-sized grid — that corrupts frame slicing
+  const padLeft = Math.max(0, Math.floor((cols - w) / 2));
   return { w, h, padLeft };
 }
 
@@ -114,7 +116,7 @@ function probe(file: string): { width: number; height: number; duration: number 
 
 function drawStatus(elapsed: number, duration: number, paused: boolean, cols: number, row: number, name: string) {
   const left = ` ${paused ? "paused" : "playing"} · ${name}`;
-  const right = `${fmtTime(elapsed)} / ${fmtTime(duration)} · space pause · q quit `;
+  const right = `${fmtTime(elapsed)} / ${fmtTime(duration)} · space pause · ←→ seek · q quit `;
   const gap = Math.max(1, cols - left.length - right.length);
   const line = (left + " ".repeat(gap) + right).slice(0, cols);
   // \x1b[2m = dim, still the theme's own foreground color
@@ -129,11 +131,6 @@ async function main() {
   }
 
   const info = probe(video);
-  const cols = process.stdout.columns ?? 80;
-  const totalRows = process.stdout.rows ?? 24;
-  const videoRows = totalRows - 1; // bottom row is the status line
-  const { w, h, padLeft } = fitToTerminal(info.width, info.height, cols, videoRows);
-  const frameSize = w * h * 3; // rgb24: three bytes per pixel
   const frameMs = 1000 / FPS;
 
   // Enter the alternate screen, clear it, hide the cursor.
@@ -143,6 +140,8 @@ async function main() {
 
   let paused = false;
   let quit = false;
+  let seek = 0; // seconds of pending arrow-key seeks, applied at next respawn
+  let resized = false;
   let decoder: ReturnType<typeof Bun.spawn> | null = null;
   let audio: ReturnType<typeof Bun.spawn> | null = null;
 
@@ -154,20 +153,63 @@ async function main() {
   }
   process.on("exit", cleanup);
 
+  // Scan the chunk character by character: fast keypresses (and escape
+  // sequences like arrows) can arrive coalesced into one data event.
   process.stdin.on("data", (key: Buffer) => {
-    const k = key.toString();
-    if (k === "q" || k === "\x03") { // q or ctrl-c
-      quit = true;
-      decoder?.kill();
-      audio?.kill();
-    } else if (k === " ") {
-      paused = !paused; // the play loop reacts by killing/respawning ffmpeg+ffplay
+    const s = key.toString();
+    debugLog(`key: ${JSON.stringify(s)}`);
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === "q" || s[i] === "\x03") { // q or ctrl-c
+        quit = true;
+        decoder?.kill();
+        audio?.kill();
+      } else if (s[i] === " ") {
+        paused = !paused; // the play loop reacts by killing/respawning ffmpeg+ffplay
+        if (paused) decoder?.kill();
+      } else if (s.startsWith("\x1b[C", i)) { // right arrow: forward 10s
+        seek += 10;
+        decoder?.kill();
+        i += 2;
+      } else if (s.startsWith("\x1b[D", i)) { // left arrow: back 10s
+        seek -= 10;
+        decoder?.kill();
+        i += 2;
+      }
     }
   });
 
-  // ponytail: terminal resize mid-play isn't handled — quit and relaunch to refit
+  process.on("SIGWINCH", () => { // terminal was resized: refit and continue
+    resized = true;
+    decoder?.kill();
+  });
+
   let position = 0; // seconds into the video where the current run starts
+  let cols = 80;
+  let totalRows = 24;
   while (!quit) { // loop the video forever
+    if (paused) {
+      drawStatus(position, info.duration, true, cols, totalRows, basename(video));
+      while (paused && !quit) await Bun.sleep(50);
+      if (quit) break;
+    }
+
+    // Re-measure the terminal on every (re)start so resizes take effect.
+    // || not ??: some ptys report 0x0, which must also fall back.
+    cols = process.stdout.columns || 80;
+    totalRows = process.stdout.rows || 24;
+    const { w, h, padLeft } = fitToTerminal(info.width, info.height, cols, totalRows - 1);
+    const frameSize = w * h * 3; // rgb24: three bytes per pixel
+    if (resized) {
+      resized = false;
+      process.stdout.write("\x1b[2J"); // the old frame may stick out of the new grid
+    }
+
+    // Apply pending arrow-key seeks, staying inside the video.
+    if (seek !== 0) {
+      position = Math.max(0, Math.min(position + seek, Math.max(0, info.duration - 1)));
+      seek = 0;
+    }
+
     // -re makes ffmpeg decode at playback speed instead of as fast as it can.
     // Without it, Bun buffers the entire decoded stream in memory (gigabytes)
     // and chunk delivery stalls — the player freezes about 12 seconds in.
@@ -223,18 +265,16 @@ async function main() {
       }
     }
 
-    debugLog(`playthrough ended: frames=${frames} quit=${quit} paused=${paused}`);
+    debugLog(`playthrough ended: frames=${frames} quit=${quit} paused=${paused} seek=${seek} resized=${resized}`);
     // Stop both processes: a paused -re decoder would otherwise keep piling
     // frames into Bun's pipe buffer for as long as the pause lasts.
     decoder.kill();
     audio.kill();
 
-    if (paused && !quit) {
-      position += frames / FPS; // resume respawns both from here via -ss
-      drawStatus(position, info.duration, true, cols, totalRows, basename(video));
-      while (paused && !quit) await Bun.sleep(50);
-    } else if (!quit) {
+    if (!paused && seek === 0 && !resized) {
       position = 0; // natural end of the file: loop from the top
+    } else {
+      position += frames / FPS; // pause/seek/resize: continue from where we stopped
     }
   }
 
