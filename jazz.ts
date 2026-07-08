@@ -8,8 +8,13 @@
 // Usage: jazz [file]   (defaults to the batman jazz video)
 // Keys:  space = pause/resume, q = quit
 
-import { existsSync } from "fs";
+import { existsSync, appendFileSync } from "fs";
 import { basename } from "path";
+
+// Debug instrumentation: JAZZ_LOG=/path/to/file jazz ... writes timing lines.
+function debugLog(line: string) {
+  if (process.env.JAZZ_LOG) appendFileSync(process.env.JAZZ_LOG, line + "\n");
+}
 
 const DEFAULT_VIDEO = "/Users/nick/Developer/video-player/batman-jazz.mp4";
 const FPS = 12; // ponytail: fixed frame rate; make it a flag if 12 ever feels wrong
@@ -156,15 +161,18 @@ async function main() {
       decoder?.kill();
       audio?.kill();
     } else if (k === " ") {
-      paused = !paused;
-      if (audio) process.kill(audio.pid, paused ? "SIGSTOP" : "SIGCONT");
+      paused = !paused; // the play loop reacts by killing/respawning ffmpeg+ffplay
     }
   });
 
   // ponytail: terminal resize mid-play isn't handled — quit and relaunch to refit
+  let position = 0; // seconds into the video where the current run starts
   while (!quit) { // loop the video forever
+    // -re makes ffmpeg decode at playback speed instead of as fast as it can.
+    // Without it, Bun buffers the entire decoded stream in memory (gigabytes)
+    // and chunk delivery stalls — the player freezes about 12 seconds in.
     decoder = Bun.spawn([
-      "ffmpeg", "-v", "error", "-i", video,
+      "ffmpeg", "-v", "error", "-ss", String(position), "-re", "-i", video,
       // normalize stretches each frame's contrast to the full range (smoothed
       // across frames so it doesn't flicker) — dark scenes become readable
       "-vf", `fps=${FPS},scale=${w}:${h},normalize=smoothing=30`,
@@ -172,46 +180,62 @@ async function main() {
     ], { stdout: "pipe", stderr: "ignore" });
 
     audio = Bun.spawn(
-      ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", video],
+      ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-ss", String(position), video],
       { stdin: "ignore", stdout: "ignore", stderr: "ignore" },
     );
 
-    const start = performance.now();
-    let pausedMs = 0;
+    // The pacing clock starts at the FIRST frame, not at spawn: ffmpeg takes
+    // ~100ms to produce frame one, and with -re it never gets ahead, so a
+    // spawn-time clock would mark every frame late and drop them all.
+    let start = 0;
     let frames = 0;
     let buf = new Uint8Array(0);
 
-    for await (const chunk of decoder.stdout) {
-      if (quit) break;
+    debugLog(`spawned decoder pid=${decoder.pid} audio pid=${audio.pid} pos=${position} grid=${w}x${h} frameSize=${frameSize}`);
+    playthrough: for await (const chunk of decoder.stdout) {
+      if (frames === 0) debugLog(`first chunk: ${chunk.length} bytes`);
+      if (quit || paused) break;
       const joined = new Uint8Array(buf.length + chunk.length);
       joined.set(buf);
       joined.set(chunk, buf.length);
       buf = joined;
 
-      while (buf.length >= frameSize && !quit) {
+      while (buf.length >= frameSize) {
+        if (quit || paused) break playthrough;
         const frame = buf.slice(0, frameSize);
         buf = buf.slice(frameSize);
+        if (frames === 0) start = performance.now();
 
-        if (paused) {
-          const pauseStart = performance.now();
-          drawStatus(frames / FPS, info.duration, true, cols, totalRows, basename(video));
-          while (paused && !quit) await Bun.sleep(50);
-          pausedMs += performance.now() - pauseStart;
-        }
-
-        // Pace frames against the wall clock (minus paused time) so video
-        // stays in step with the audio. If we fall behind, drop the frame.
-        const due = start + pausedMs + frames * frameMs;
+        // Pace frames against the wall clock so video stays in step with the
+        // audio. If we fall behind, drop the frame.
+        const due = start + frames * frameMs;
         const wait = due - performance.now();
         frames++;
         if (wait > 0) await Bun.sleep(wait);
         else if (wait < -frameMs) continue; // ponytail: drop-to-catch-up is the whole sync strategy
 
-        process.stdout.write("\x1b[H" + frameToText(frame, w, h, padLeft));
-        drawStatus(frames / FPS, info.duration, false, cols, totalRows, basename(video));
+        const text = frameToText(frame, w, h, padLeft);
+        process.stdout.write("\x1b[H" + text);
+        drawStatus(position + frames / FPS, info.duration, false, cols, totalRows, basename(video));
+        if (frames % FPS === 0) {
+          debugLog(`t=${Math.round(performance.now() - start)}ms frames=${frames} late=${Math.round(-wait)}ms textBytes=${text.length} buf=${buf.length} rss=${Math.round(process.memoryUsage.rss() / 1e6)}MB`);
+        }
       }
     }
-    audio.kill(); // playthrough finished (or quit): stop audio before looping
+
+    debugLog(`playthrough ended: frames=${frames} quit=${quit} paused=${paused}`);
+    // Stop both processes: a paused -re decoder would otherwise keep piling
+    // frames into Bun's pipe buffer for as long as the pause lasts.
+    decoder.kill();
+    audio.kill();
+
+    if (paused && !quit) {
+      position += frames / FPS; // resume respawns both from here via -ss
+      drawStatus(position, info.duration, true, cols, totalRows, basename(video));
+      while (paused && !quit) await Bun.sleep(50);
+    } else if (!quit) {
+      position = 0; // natural end of the file: loop from the top
+    }
   }
 
   cleanup();
