@@ -1,20 +1,31 @@
 import { test, expect } from "bun:test";
 import { existsSync } from "fs";
-import { pickChar, frameToText, fitToTerminal, fmtTime } from "./jazz.ts";
+import { pickChar, luminance, frameToText, fitToTerminal, fmtTime } from "./jazz.ts";
 
 const VIDEO = "/Users/nick/Developer/video-player/batman-jazz.mp4";
+
+function stripAnsi(s: string): string {
+  return s.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+test("luminance weighs green heaviest", () => {
+  expect(luminance(0, 0, 0)).toBe(0);
+  expect(luminance(255, 255, 255)).toBeCloseTo(255);
+  expect(luminance(0, 255, 0)).toBeGreaterThan(luminance(255, 0, 0));
+});
 
 test("pickChar maps dark to blank and bright to dense", () => {
   expect(pickChar(0)).toBe(" ");
   expect(pickChar(255)).toBe("@");
 });
 
-test("frameToText shapes bytes into padded lines", () => {
-  const bytes = new Uint8Array([0, 255, 128, 0, 255, 128]); // 3 wide, 2 tall
-  const lines = frameToText(bytes, 3, 2, 2).split("\n");
-  expect(lines.length).toBe(2);
-  expect(lines[0].length).toBe(5); // 2 pad + 3 chars
-  expect(lines[0]).toBe("   @="); // 0→space, 255→@, 128→=
+test("frameToText colors bright pixels and pads lines", () => {
+  // one row: a black pixel then a white pixel, padded by one column
+  const rgb = new Uint8Array([0, 0, 0, 255, 255, 255]);
+  const text = frameToText(rgb, 2, 1, 1);
+  expect(stripAnsi(text)).toBe("  @");
+  expect(text).toContain("\x1b[38;2;248;248;248m"); // white, quantized to steps of 8
+  expect(text.endsWith("\x1b[0m")).toBe(true);
 });
 
 test("fitToTerminal keeps the video inside the terminal", () => {
@@ -29,13 +40,13 @@ test("fmtTime formats with and without hours", () => {
   expect(fmtTime(3600)).toBe("1:00:00");
 });
 
-test("ffmpeg pipeline yields exact-size grayscale frames", async () => {
+test("ffmpeg pipeline yields exact-size rgb frames", async () => {
   if (!existsSync(VIDEO)) return; // video not on this machine, skip
   const proc = Bun.spawn([
     "ffmpeg", "-v", "error", "-i", VIDEO,
-    "-vf", "fps=12,scale=8:4", "-frames:v", "3",
-    "-f", "rawvideo", "-pix_fmt", "gray", "-",
+    "-vf", "fps=12,scale=8:4,normalize=smoothing=30", "-frames:v", "3",
+    "-f", "rawvideo", "-pix_fmt", "rgb24", "-",
   ], { stdout: "pipe", stderr: "ignore" });
   const bytes = await new Response(proc.stdout).arrayBuffer();
-  expect(bytes.byteLength).toBe(8 * 4 * 3); // 3 frames of 8x4 pixels
+  expect(bytes.byteLength).toBe(8 * 4 * 3 * 3); // 3 frames of 8x4 rgb pixels
 });

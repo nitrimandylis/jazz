@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
-// jazz — ASCII focus-video player for the terminal.
-// ffmpeg decodes the video into raw grayscale frames, we draw each frame as
-// text characters (no colors, so it always matches the terminal theme), and
-// ffplay plays the audio invisibly in the background.
+// jazz — colored ASCII focus-video player for the terminal.
+// ffmpeg decodes the video into raw RGB frames (contrast-normalized so dark
+// movie scenes still have detail), we draw each frame as text characters
+// colored with the pixel's own RGB via truecolor escapes, and ffplay plays
+// the audio invisibly in the background.
 //
 // Usage: jazz [file]   (defaults to the batman jazz video)
 // Keys:  space = pause/resume, q = quit
@@ -12,25 +13,48 @@ import { basename } from "path";
 
 const DEFAULT_VIDEO = "/Users/nick/Developer/video-player/batman-jazz.mp4";
 const FPS = 12; // ponytail: fixed frame rate; make it a flag if 12 ever feels wrong
-const RAMP = " .:-=+*#%@"; // darkest → brightest (dense chars read as bright on a dark theme)
+const RAMP = " .,:;i1tfLCG08@"; // darkest → brightest (dense chars read as bright on a dark theme)
+const GAMMA = 0.7; // < 1 lifts shadows: dark pixels get real characters, not just dots
 
-// Map one grayscale pixel (0-255) to one character.
-export function pickChar(luminance: number): string {
-  const index = Math.floor((luminance / 255) * (RAMP.length - 1));
+// Perceived brightness of an RGB pixel (0-255). Green counts most because
+// human eyes are most sensitive to it.
+export function luminance(r: number, g: number, b: number): number {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+// Map brightness (0-255) to a character, with a gamma lift for dark scenes.
+export function pickChar(lum: number): string {
+  const boosted = Math.pow(lum / 255, GAMMA);
+  const index = Math.min(RAMP.length - 1, Math.floor(boosted * RAMP.length));
   return RAMP[index];
 }
 
-// Turn one raw frame (w*h grayscale bytes) into lines of text,
-// left-padded so the picture sits centered in the terminal.
-export function frameToText(bytes: Uint8Array, w: number, h: number, padLeft: number): string {
+// Turn one raw frame (w*h*3 RGB bytes) into lines of text, each character
+// colored with its pixel's RGB, left-padded so the picture sits centered.
+export function frameToText(rgb: Uint8Array, w: number, h: number, padLeft: number): string {
   const pad = " ".repeat(padLeft);
   const lines: string[] = [];
   for (let y = 0; y < h; y++) {
     let line = pad;
+    let prevColor = "";
     for (let x = 0; x < w; x++) {
-      line += pickChar(bytes[y * w + x]);
+      const i = (y * w + x) * 3;
+      const r = rgb[i], g = rgb[i + 1], b = rgb[i + 2];
+      const ch = pickChar(luminance(r, g, b));
+      if (ch === " ") { // blank cells need no color code
+        line += " ";
+        continue;
+      }
+      // Quantize each channel to steps of 8 so runs of similar pixels can
+      // share one escape code instead of emitting one per character.
+      const color = `\x1b[38;2;${r & ~7};${g & ~7};${b & ~7}m`;
+      if (color !== prevColor) {
+        line += color;
+        prevColor = color;
+      }
+      line += ch;
     }
-    lines.push(line);
+    lines.push(line + "\x1b[0m");
   }
   return lines.join("\n");
 }
@@ -104,7 +128,7 @@ async function main() {
   const totalRows = process.stdout.rows ?? 24;
   const videoRows = totalRows - 1; // bottom row is the status line
   const { w, h, padLeft } = fitToTerminal(info.width, info.height, cols, videoRows);
-  const frameSize = w * h;
+  const frameSize = w * h * 3; // rgb24: three bytes per pixel
   const frameMs = 1000 / FPS;
 
   // Enter the alternate screen, clear it, hide the cursor.
@@ -141,8 +165,10 @@ async function main() {
   while (!quit) { // loop the video forever
     decoder = Bun.spawn([
       "ffmpeg", "-v", "error", "-i", video,
-      "-vf", `fps=${FPS},scale=${w}:${h}`,
-      "-f", "rawvideo", "-pix_fmt", "gray", "-",
+      // normalize stretches each frame's contrast to the full range (smoothed
+      // across frames so it doesn't flicker) — dark scenes become readable
+      "-vf", `fps=${FPS},scale=${w}:${h},normalize=smoothing=30`,
+      "-f", "rawvideo", "-pix_fmt", "rgb24", "-",
     ], { stdout: "pipe", stderr: "ignore" });
 
     audio = Bun.spawn(
