@@ -1,14 +1,17 @@
 # jazz
 
-A terminal focus-video player. `jazz` plays the batman jazz video as actual
-pixels inside a Ghostty pane (via mpv's Kitty graphics protocol output),
-looping forever, so the movie vibes along while you work. `jazz <file>` plays
-any other video the same way.
+A terminal focus-video player, built from the ground up. `jazz` plays the
+batman jazz video as ASCII art inside the terminal: ffmpeg decodes frames,
+jazz.ts maps each pixel's brightness to a character (` .:-=+*#%@`) drawn in
+the terminal's own foreground color — so the picture always matches the
+terminal theme — while ffplay plays the audio invisibly in the background.
+Loops forever. `jazz <file>` plays any other video the same way.
 
-It is deliberately a thin wrapper: mpv does decoding, audio, A/V sync, and
-in-player controls (space pause, arrows seek, 9/0 volume, q quit). This tool
-is the launcher with the right flags baked in.
+Controls: space pause/resume, q quit. A dim status line shows state, file,
+and elapsed/total time.
+
+Dependencies: bun, ffmpeg (which provides ffprobe and ffplay). No mpv.
 
 ## Where it's headed
-- Nothing planned. Possible later: audio-only flag, resume-position, a videos
-  library — add them when they're actually wanted.
+- Nothing planned. Possible later: seek keys, resize handling, audio-only
+  mode, color ASCII — add them when they're actually wanted.
