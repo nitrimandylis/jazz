@@ -68,6 +68,48 @@ export function frameToText(rgb: Uint8Array, w: number, h: number, padLeft: numb
   return lines.join("\n");
 }
 
+// --hd mode: each cell holds two vertically stacked pixels (a ▀ block with
+// separate top/bottom colors), so the pixel grid is cols wide and 2*rows
+// tall, and each pixel is roughly square.
+export function fitPixelsToTerminal(videoW: number, videoH: number, cols: number, rows: number) {
+  const aspect = videoW / videoH;
+  let w = cols;
+  let h = Math.round(w / aspect);
+  if (h > rows * 2) {
+    h = rows * 2;
+    w = Math.round(h * aspect);
+  }
+  w = Math.max(1, Math.min(cols, w));
+  h = Math.max(2, 2 * Math.floor(h / 2)); // two pixels per cell: keep h even
+  const padLeft = Math.max(0, Math.floor((cols - w) / 2));
+  return { w, h, padLeft };
+}
+
+// Render a frame as half-block "pixels": one ▀ per cell, foreground colors
+// the top pixel and background colors the bottom pixel.
+export function frameToHalfBlocks(rgb: Uint8Array, w: number, h: number, padLeft: number): string {
+  const pad = " ".repeat(padLeft);
+  const lines: string[] = [];
+  for (let cy = 0; cy < h / 2; cy++) {
+    let line = pad;
+    let prevColor = "";
+    for (let x = 0; x < w; x++) {
+      const t = (cy * 2 * w + x) * 3; // top pixel
+      const b = ((cy * 2 + 1) * w + x) * 3; // bottom pixel
+      const color =
+        `\x1b[38;2;${rgb[t] & ~7};${rgb[t + 1] & ~7};${rgb[t + 2] & ~7};` +
+        `48;2;${rgb[b] & ~7};${rgb[b + 1] & ~7};${rgb[b + 2] & ~7}m`;
+      if (color !== prevColor) {
+        line += color;
+        prevColor = color;
+      }
+      line += "▀"; // ▀
+    }
+    lines.push(line + "\x1b[0m");
+  }
+  return lines.join("\n");
+}
+
 // Work out how many character cells the video should occupy.
 // A terminal cell is roughly twice as tall as it is wide, so one row of
 // characters counts as two pixels of height when preserving aspect ratio.
@@ -128,7 +170,8 @@ function drawStatus(elapsed: number, duration: number, paused: boolean, cols: nu
 }
 
 async function main() {
-  const video = process.argv[2] ?? DEFAULT_VIDEO;
+  const hd = process.argv.includes("--hd"); // half-block pixels, 2x vertical detail
+  const video = process.argv.slice(2).find((a) => a !== "--hd") ?? DEFAULT_VIDEO;
   if (!existsSync(video)) {
     console.error(`jazz: no such file: ${video}`);
     process.exit(1);
@@ -201,7 +244,9 @@ async function main() {
     // || not ??: some ptys report 0x0, which must also fall back.
     cols = process.stdout.columns || 80;
     totalRows = process.stdout.rows || 24;
-    const { w, h, padLeft } = fitToTerminal(info.width, info.height, cols, totalRows - 1);
+    const { w, h, padLeft } = hd
+      ? fitPixelsToTerminal(info.width, info.height, cols, totalRows - 1)
+      : fitToTerminal(info.width, info.height, cols, totalRows - 1);
     const frameSize = w * h * 3; // rgb24: three bytes per pixel
     if (resized) {
       resized = false;
@@ -260,7 +305,9 @@ async function main() {
         if (wait > 0) await Bun.sleep(wait);
         else if (wait < -frameMs) continue; // ponytail: drop-to-catch-up is the whole sync strategy
 
-        const text = frameToText(frame, w, h, padLeft);
+        const text = hd
+          ? frameToHalfBlocks(frame, w, h, padLeft)
+          : frameToText(frame, w, h, padLeft);
         process.stdout.write("\x1b[H" + text);
         drawStatus(position + frames / FPS, info.duration, false, cols, totalRows, basename(video));
         if (frames % FPS === 0) {

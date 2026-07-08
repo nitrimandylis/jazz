@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { existsSync } from "fs";
-import { pickChar, luminance, frameToText, fitToTerminal, fmtTime } from "./jazz.ts";
+import { pickChar, luminance, frameToText, frameToHalfBlocks, fitToTerminal, fitPixelsToTerminal, fmtTime } from "./jazz.ts";
 
 const VIDEO = "/Users/nick/Developer/video-player/batman-jazz.mp4";
 
@@ -30,6 +30,22 @@ test("frameToText paints cells and pads lines", () => {
   // black pixel still gets a painted (black) background
   expect(text).toContain("48;2;0;0;0");
   expect(text.endsWith("\x1b[0m")).toBe(true);
+});
+
+test("fitPixelsToTerminal packs two even pixels per cell row", () => {
+  const { w, h } = fitPixelsToTerminal(1920, 1080, 100, 40);
+  expect(w).toBeLessThanOrEqual(100);
+  expect(h).toBeLessThanOrEqual(80); // two pixels per cell row
+  expect(h % 2).toBe(0);
+});
+
+test("frameToHalfBlocks colors top and bottom pixels of one cell", () => {
+  // one column, two rows: red on top, blue below → a single ▀ cell
+  const rgb = new Uint8Array([255, 0, 0, 0, 0, 255]);
+  const text = frameToHalfBlocks(rgb, 1, 2, 0);
+  expect(stripAnsi(text)).toBe("▀");
+  expect(text).toContain("38;2;248;0;0"); // top pixel = foreground
+  expect(text).toContain("48;2;0;0;248"); // bottom pixel = background
 });
 
 test("fitToTerminal keeps the video inside the terminal", () => {
