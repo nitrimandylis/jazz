@@ -13,6 +13,10 @@ Controls: space pause/resume, ←/→ seek ±10s, q quit. Resizing the terminal
 refits the picture automatically. A dim status line shows state, file, and
 elapsed/total time.
 
+`jazz --hd` switches from ASCII to half-block rendering (▀ cells with
+independent top/bottom colors): double the vertical resolution, reads as a
+pixelated image rather than text art.
+
 Dependencies: bun, ffmpeg (which provides ffprobe and ffplay). No mpv.
 
 ## Where it's headed
