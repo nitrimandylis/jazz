@@ -4,5 +4,8 @@
   "private": true,
   "bin": {
     "jazz": "./jazz.ts"
+  },
+  "scripts": {
+    "compile": "bun build --compile jazz.ts --outfile ~/.bun/bin/jazz"
   }
 }

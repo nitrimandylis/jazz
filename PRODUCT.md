@@ -20,6 +20,10 @@ elapsed/total time.
 
 Dependencies: bun, ffmpeg (which provides ffprobe and ffplay). No mpv.
 
+Shipped as a standalone compiled binary: `bun run compile` builds jazz.ts
+into ~/.bun/bin/jazz (bun runtime embedded — no repo needed to run it).
+Re-run after changing jazz.ts; the binary doesn't track the source.
+
 ## Where it's headed
 - Nothing planned. Possible later: remember position across launches,
   audio-only mode — add them when they're actually wanted.
