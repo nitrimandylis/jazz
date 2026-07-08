@@ -28,7 +28,7 @@ There are three fidelity tiers. The default transmits real pixels over the Kitty
 Pause, seek, and window resizes are all the same trick internally — kill ffmpeg, respawn it at a timestamp — which means the whole player is one loop with no state worth corrupting.
 
 ```console
-nick@video-player:~$ jazz
+nick@jazz:~$ jazz
 [✓] 1 video in ~/.config/jazz — playing batman-jazz.mp4. loop: forever.
 [i] space pauses. q quits. arrows seek. the jazz survives all three.
 ```
@@ -50,8 +50,8 @@ nick@video-player:~$ jazz
 Needs [bun](https://bun.sh), ffmpeg (`brew install ffmpeg` — brings ffprobe and ffplay), a Kitty-graphics terminal for the default mode (Ghostty, kitty, WezTerm), and fzf if your library grows past one file.
 
 ```bash
-git clone https://github.com/nitrimandylis/video-player.git
-cd video-player
+git clone https://github.com/nitrimandylis/jazz.git
+cd jazz
 bun run compile          # builds a standalone binary into ~/.bun/bin/jazz
 mv your-video.mp4 ~/.config/jazz/
 jazz
