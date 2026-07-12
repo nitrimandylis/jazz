@@ -52,9 +52,10 @@ Needs [bun](https://bun.sh), ffmpeg (`brew install ffmpeg` — brings ffprobe an
 ```bash
 git clone https://github.com/nitrimandylis/jazz.git
 cd jazz
-bun run compile          # builds a standalone binary into ~/.bun/bin/jazz
+bun run compile          # standalone binary into ~/.bun/bin/jazz, and man jazz into your manpath
 mv your-video.mp4 ~/.config/jazz/
 jazz
+man jazz                 # modes, keys, and JAZZ_LOG, offline
 ```
 
 The binary embeds the bun runtime, so the repo can disappear afterwards and `jazz` will not notice (recompile after editing `jazz.ts` — it's a snapshot, not a symlink).
