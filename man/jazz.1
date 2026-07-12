@@ -1,0 +1,47 @@
+.TH JAZZ 1 "2026-07-12" "jazz 0.1.0" "User Commands"
+.SH NAME
+jazz \- focus-video player for the terminal
+.SH SYNOPSIS
+.B jazz
+[\fB\-\-hd\fR|\fB\-\-ascii\fR] [\fIfile\fR]
+.SH DESCRIPTION
+ffmpeg decodes a video into raw RGB frames (contrast-normalized so dark scenes
+still have detail) and ffplay plays the audio invisibly in the background.
+Frames render as real pixels via the Kitty graphics protocol by default.
+.IP
+With no
+.IR file ,
+jazz plays from
+.IR ~/.config/jazz ,
+using an fzf picker if several videos are present. Recognized extensions:
+.IR .mp4 ", " .mkv ", " .mov ", " .webm ", " .m4v .
+.SH OPTIONS
+.TP
+.B \-\-hd
+Render each cell as a 2x2 block of pixels using quadrant characters.
+.TP
+.B \-\-ascii
+Render as painted ASCII text art instead of pixels.
+.SH KEYS
+.TP
+.B space
+Pause / resume.
+.TP
+.B \(<-/\(->
+Seek \(+-10s.
+.TP
+.B q
+Quit.
+.SH ENVIRONMENT
+.TP
+.B JAZZ_LOG=\fIpath\fR
+Write per-frame timing lines to
+.IR path .
+.SH FILES
+.TP
+.I ~/.config/jazz
+Default video library.
+.SH SEE ALSO
+.BR ffmpeg (1),
+.BR ffplay (1),
+.BR fzf (1)
