@@ -9,6 +9,15 @@ Videos live in ~/.config/jazz. Bare `jazz` plays the only video there, or
 brings up an fzf picker when there are several. `jazz <path>` plays any file
 outside the library.
 
+`jazz <url>` plays from the web. There is no flag: an argument matching
+`https?://` is handed to yt-dlp (`-f b/bv*+ba`, so a muxed stream if one
+exists and separate video plus audio otherwise), and everything downstream is
+unchanged, because ffmpeg, ffprobe and ffplay open an http URL the same way
+they open a file. Seeking is a range request, so nothing is downloaded and
+nothing is written to disk. Known ceiling: the resolved links are signed and
+expire after a few hours, so a session longer than that would need
+re-resolving per respawn.
+
 Three rendering modes:
 - `jazz` (default) — real pixels via the Kitty graphics protocol (Ghostty):
   frames are base64-chunked RGB transmitted with a reused image id, scaled by
@@ -19,14 +28,8 @@ Three rendering modes:
   cell is painted with the pixel's color (dim background, bright glyph).
 
 Controls: space pause/resume, ←/→ seek ±10s, q quit. Resizing the terminal
-refits the picture automatically. A dim status line shows state, file, and
-elapsed/total time.
-
-`jazz <url>` plays from the web: yt-dlp resolves the page to a direct stream
-URL and everything downstream is unchanged, because ffmpeg, ffprobe and ffplay
-open an http URL the same way they open a file. Seeking works over range
-requests, so nothing is downloaded. The resolved links are signed and expire
-after a few hours; a session longer than that would need re-resolving.
+refits the picture automatically. A dim status line shows state, elapsed/total
+time, and the name: the filename for a local file, the yt-dlp title for a URL.
 
 Dependencies: bun, ffmpeg (which provides ffprobe and ffplay). No mpv. yt-dlp
 only for URLs.
@@ -37,4 +40,8 @@ Re-run after changing jazz.ts; the binary doesn't track the source.
 
 ## Where it's headed
 - Nothing planned. Possible later: remember position across launches,
-  audio-only mode — add them when they're actually wanted.
+  audio-only mode, re-resolving expired URLs — add them when they're actually
+  wanted.
+- Considered and rejected against tplay (the Rust equivalent, ASCII-only):
+  webcam input, subtitles, playback speed. None of them serve a video that
+  loops in the corner while you work on something else.
