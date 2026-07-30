@@ -3,7 +3,7 @@
 jazz \- focus-video player for the terminal
 .SH SYNOPSIS
 .B jazz
-[\fB\-\-hd\fR|\fB\-\-ascii\fR] [\fIfile\fR]
+[\fB\-\-hd\fR|\fB\-\-ascii\fR] [\fIfile\fR|\fIurl\fR]
 .SH DESCRIPTION
 ffmpeg decodes a video into raw RGB frames (contrast-normalized so dark scenes
 still have detail) and ffplay plays the audio invisibly in the background.
@@ -15,6 +15,12 @@ jazz plays from
 .IR ~/.config/jazz ,
 using an fzf picker if several videos are present. Recognized extensions:
 .IR .mp4 ", " .mkv ", " .mov ", " .webm ", " .m4v .
+.IP
+A
+.I url
+is handed to yt\-dlp, which resolves it to a direct stream that ffmpeg opens
+like a file \(em seeking and looping still work. Needs yt\-dlp installed. The
+resolved links are signed and expire after a few hours.
 .SH OPTIONS
 .TP
 .B \-\-hd
@@ -44,4 +50,5 @@ Default video library.
 .SH SEE ALSO
 .BR ffmpeg (1),
 .BR ffplay (1),
-.BR fzf (1)
+.BR fzf (1),
+.BR yt\-dlp (1)

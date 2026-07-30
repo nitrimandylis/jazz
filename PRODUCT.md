@@ -22,7 +22,14 @@ Controls: space pause/resume, ←/→ seek ±10s, q quit. Resizing the terminal
 refits the picture automatically. A dim status line shows state, file, and
 elapsed/total time.
 
-Dependencies: bun, ffmpeg (which provides ffprobe and ffplay). No mpv.
+`jazz <url>` plays from the web: yt-dlp resolves the page to a direct stream
+URL and everything downstream is unchanged, because ffmpeg, ffprobe and ffplay
+open an http URL the same way they open a file. Seeking works over range
+requests, so nothing is downloaded. The resolved links are signed and expire
+after a few hours; a session longer than that would need re-resolving.
+
+Dependencies: bun, ffmpeg (which provides ffprobe and ffplay). No mpv. yt-dlp
+only for URLs.
 
 Shipped as a standalone compiled binary: `bun run compile` builds jazz.ts
 into ~/.bun/bin/jazz (bun runtime embedded — no repo needed to run it).

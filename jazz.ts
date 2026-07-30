@@ -5,8 +5,9 @@
 // the background. Frames render as real pixels (Kitty graphics protocol) by
 // default, quadrant blocks with --hd, or painted ASCII with --ascii.
 //
-// Usage: jazz [--hd|--ascii] [file]
+// Usage: jazz [--hd|--ascii] [file|url]
 //        With no file: plays from ~/.config/jazz (fzf picker if several).
+//        A URL is resolved to a direct stream by yt-dlp first.
 // Keys:  space = pause/resume, ←/→ = seek ±10s, q = quit
 
 import { existsSync, appendFileSync, readdirSync, mkdirSync } from "fs";
@@ -208,6 +209,35 @@ function probe(file: string): { width: number; height: number; duration: number 
   return { width, height, duration };
 }
 
+// yt-dlp printed the title, then one URL per selected format. Muxed formats
+// give a single URL; separate video+audio give two, in that order.
+export function parseYtdlp(stdout: string): { title: string; video: string; audio: string } {
+  const lines = stdout.trim().split("\n").filter((l) => l.length > 0);
+  const urls = lines.filter((l) => l.startsWith("http"));
+  const title = lines.find((l) => !l.startsWith("http")) ?? "stream";
+  return { title, video: urls[0], audio: urls[1] ?? urls[0] };
+}
+
+// Turn a page URL into direct stream URLs. ffmpeg, ffprobe and ffplay all open
+// an http URL exactly like a file, so nothing downstream changes — seeking
+// still works, over range requests instead of disk.
+function resolveUrl(url: string): { title: string; video: string; audio: string } {
+  if (!Bun.which("yt-dlp")) {
+    console.error("jazz: playing a URL needs yt-dlp (brew install yt-dlp)");
+    process.exit(1);
+  }
+  // b/bv*+ba: prefer one muxed stream, fall back to separate video and audio.
+  const p = Bun.spawnSync(["yt-dlp", "-f", "b/bv*+ba", "--print", "%(title)s", "--print", "urls", url]);
+  const out = parseYtdlp(p.stdout.toString());
+  if (p.exitCode !== 0 || !out.video) {
+    console.error(`jazz: yt-dlp could not resolve ${url}\n${p.stderr.toString().trim()}`);
+    process.exit(1);
+  }
+  // ponytail: resolved once at startup. Signed URLs expire after a few hours,
+  // so a very long session eventually 403s — re-resolve per respawn if it bites.
+  return out;
+}
+
 function drawStatus(elapsed: number, duration: number, paused: boolean, cols: number, row: number, name: string) {
   const left = ` ${paused ? "paused" : "playing"} · ${name}`;
   const right = `${fmtTime(elapsed)} / ${fmtTime(duration)} · space pause · ←→ seek · q quit `;
@@ -270,11 +300,15 @@ async function main() {
   // rendering mode: real pixels by default, --ascii for painted text art,
   // --hd for quadrant blocks (2x2 pixels per cell)
   const mode = args.includes("--ascii") ? "ascii" : args.includes("--hd") ? "hd" : "pixels";
-  const video = args.find((a) => !a.startsWith("--")) ?? pickFromLibrary();
-  if (!existsSync(video)) {
-    console.error(`jazz: no such file: ${video}`);
+  const source = args.find((a) => !a.startsWith("--")) ?? pickFromLibrary();
+  const isUrl = /^https?:\/\//.test(source);
+  if (!isUrl && !existsSync(source)) {
+    console.error(`jazz: no such file: ${source}`);
     process.exit(1);
   }
+  // A URL becomes stream URLs; a file is its own video and audio source.
+  const resolved = isUrl ? resolveUrl(source) : { title: basename(source), video: source, audio: source };
+  const video = resolved.video;
 
   const info = probe(video);
   const frameMs = 1000 / FPS;
@@ -336,7 +370,7 @@ async function main() {
   let totalRows = 24;
   while (!quit) { // loop the video forever
     if (paused) {
-      drawStatus(position, info.duration, true, cols, totalRows, basename(video));
+      drawStatus(position, info.duration, true, cols, totalRows, resolved.title);
       while (paused && !quit) await Bun.sleep(50);
       if (quit) break;
     }
@@ -379,7 +413,7 @@ async function main() {
     ], { stdout: "pipe", stderr: "ignore" });
 
     audio = Bun.spawn(
-      ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-ss", String(position), video],
+      ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-ss", String(position), resolved.audio],
       { stdin: "ignore", stdout: "ignore", stderr: "ignore" },
     );
 
@@ -418,7 +452,7 @@ async function main() {
           : mode === "hd" ? "\x1b[H" + frameToQuadrants(frame, w, h, padLeft)
           : "\x1b[H" + frameToText(frame, w, h, padLeft);
         process.stdout.write(text);
-        drawStatus(position + frames / FPS, info.duration, false, cols, totalRows, basename(video));
+        drawStatus(position + frames / FPS, info.duration, false, cols, totalRows, resolved.title);
         if (frames % FPS === 0) {
           debugLog(`t=${Math.round(performance.now() - start)}ms frames=${frames} late=${Math.round(-wait)}ms textBytes=${text.length} buf=${buf.length} rss=${Math.round(process.memoryUsage.rss() / 1e6)}MB`);
         }

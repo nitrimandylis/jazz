@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { existsSync } from "fs";
-import { pickChar, luminance, frameToText, frameToQuadrants, kittyFrame, fitToTerminal, fitGraphics, fmtTime } from "./jazz.ts";
+import { pickChar, luminance, frameToText, frameToQuadrants, kittyFrame, fitToTerminal, fitGraphics, fmtTime, parseYtdlp } from "./jazz.ts";
 
 import { homedir } from "os";
 const VIDEO = `${homedir()}/.config/jazz/batman-jazz.mp4`;
@@ -99,4 +99,16 @@ test("ffmpeg pipeline yields exact-size rgb frames", async () => {
   ], { stdout: "pipe", stderr: "ignore" });
   const bytes = await new Response(proc.stdout).arrayBuffer();
   expect(bytes.byteLength).toBe(8 * 4 * 3 * 3); // 3 frames of 8x4 rgb pixels
+});
+
+test("parseYtdlp reads muxed and split yt-dlp output", () => {
+  // one muxed format: video and audio come from the same URL
+  const muxed = parseYtdlp("Batman Jazz\nhttps://example.com/muxed.mp4\n");
+  expect(muxed.title).toBe("Batman Jazz");
+  expect(muxed.video).toBe("https://example.com/muxed.mp4");
+  expect(muxed.audio).toBe("https://example.com/muxed.mp4");
+  // separate streams: video first, audio second
+  const split = parseYtdlp("Batman Jazz\nhttps://example.com/v.mp4\nhttps://example.com/a.m4a\n");
+  expect(split.video).toBe("https://example.com/v.mp4");
+  expect(split.audio).toBe("https://example.com/a.m4a");
 });

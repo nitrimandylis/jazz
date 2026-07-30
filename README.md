@@ -41,13 +41,14 @@ nick@jazz:~$ jazz
 | 02 | **`--hd` quadrants** | what it actually does: splits every cell into 2×2 pixels, picks the quadrant glyph (▘▀▞▟) whose pattern matches the bright/dark split, averages each group into fg/bg — 4× the detail of ascii, still technically text |
 | 03 | **`--ascii` painted cells** | what it actually does: maps luminance to a 15-char ramp with a gamma lift for dark scenes, paints the cell background with the dimmed pixel color and the glyph brighter — film noir stays legible |
 | 04 | **video library** | what it actually does: bare `jazz` plays the only file in `~/.config/jazz`, or opens an fzf picker when there are several. `jazz <path>` plays anything else |
+| 04b | **`jazz <url>`** | what it actually does: yt-dlp resolves the page to a direct stream URL, which ffmpeg opens exactly like a file — seek and loop keep working over http range requests, no download, no temp file |
 | 05 | **controls** | what it actually does: space pause/resume, ←/→ seek ±10s (presses stack), q quit — every one implemented as "respawn ffmpeg at a timestamp" |
 | 06 | **resize handling** | what it actually does: catches SIGWINCH, re-measures the grid, refits, continues where it was. no relaunch |
 | 07 | **sync strategy** | what it actually does: ffmpeg decodes with `-re` at playback speed, frames pace against a first-frame wall clock, anything more than one frame late is dropped — audio never waits for video |
 
 ## 🚀 Run it
 
-Needs [bun](https://bun.sh), ffmpeg (`brew install ffmpeg` — brings ffprobe and ffplay), a Kitty-graphics terminal for the default mode (Ghostty, kitty, WezTerm), and fzf if your library grows past one file.
+Needs [bun](https://bun.sh), ffmpeg (`brew install ffmpeg` — brings ffprobe and ffplay), a Kitty-graphics terminal for the default mode (Ghostty, kitty, WezTerm), fzf if your library grows past one file, and yt-dlp if you want to pass a URL.
 
 ```bash
 git clone https://github.com/nitrimandylis/jazz.git
