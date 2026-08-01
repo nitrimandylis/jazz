@@ -6,6 +6,6 @@
     "jazz": "./jazz.ts"
   },
   "scripts": {
-    "compile": "bun build --compile jazz.ts --outfile ~/.bun/bin/jazz && mkdir -p $(brew --prefix)/share/man/man1 && cp man/jazz.1 $(brew --prefix)/share/man/man1/"
+    "compile": "bun build --compile jazz.ts --outfile ~/.bun/bin/jazz && mkdir -p $(brew --prefix)/share/man/man1 && cp man/jazz.1 $(brew --prefix)/share/man/man1/ && mkdir -p ~/.claude/skills && cp -R jazz-cli ~/.claude/skills/"
   }
 }
