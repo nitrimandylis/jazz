@@ -56,7 +56,7 @@ Needs [bun](https://bun.sh), ffmpeg (`brew install ffmpeg` — brings ffprobe an
 ```bash
 git clone https://github.com/nitrimandylis/jazz.git
 cd jazz
-bun run compile          # standalone binary into ~/.bun/bin/jazz, and man jazz into your manpath
+bun run compile          # → ~/.bun/bin/jazz, man jazz, and the agent skill
 mv your-video.mp4 ~/.config/jazz/
 jazz                     # the library (fzf picker if there's more than one)
 jazz ~/Movies/heat.mkv   # any file
@@ -66,6 +66,14 @@ man jazz                 # modes, keys, and JAZZ_LOG, offline
 ```
 
 The binary embeds the bun runtime, so the repo can disappear afterwards and `jazz` will not notice (recompile after editing `jazz.ts` — it's a snapshot, not a symlink).
+
+## 🤖 The agent skill
+
+`jazz-cli/SKILL.md` is an agent skill for driving `jazz` — chiefly that `jazz` puts stdin in raw mode at startup, so every invocation including `--help` dies without a TTY and nothing should try to spawn it. The traps that don't fit in
+`--help`, in other words. `bun run compile` copies it into `~/.claude/skills/`.
+
+It's a plain directory at the repo root rather than a `.claude/` one, because this repo is public and
+not everyone drives it with the same agent. Point yours at the file.
 
 ## 🔩 Under the hood
 
