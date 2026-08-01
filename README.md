@@ -69,7 +69,7 @@ The binary embeds the bun runtime, so the repo can disappear afterwards and `jaz
 
 ## 🤖 The agent skill
 
-`jazz-cli/SKILL.md` is an agent skill for driving `jazz` — chiefly that `jazz` puts stdin in raw mode at startup, so every invocation including `--help` dies without a TTY and nothing should try to spawn it. The traps that don't fit in `--help`, in other words. `bun run compile` copies it into `~/.claude/skills/`.
+`jazz-cli/SKILL.md` is an agent skill for driving `jazz` — chiefly that `jazz` puts stdin in raw mode at startup, so every invocation including `--help` dies without a TTY and nothing should try to spawn it. The traps that don't fit in `--help`, in other words. `bun run compile` copies it into `~/.claude/skills/` if you already have that directory, and leaves your machine alone if you don't.
 
 It's a plain directory at the repo root rather than a `.claude/` one, because this repo is public and not everyone drives it with the same agent. Point yours at the file.
 
