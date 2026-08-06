@@ -320,6 +320,17 @@ async function main() {
   // Help has to come first: everything below either opens an fzf picker or
   // takes over the terminal, so `jazz --help` used to hang instead of printing.
   if (args.includes("-h") || args.includes("--help")) return void console.log(HELP);
+
+  // ffmpeg is not optional and was not checked: a machine without it got a raw
+  // Bun "Executable not found in $PATH" trace out of probe(), which reads as
+  // jazz being broken rather than as a missing install. Check all three up
+  // front, before the picker and before the terminal is taken over.
+  const missing = ["ffmpeg", "ffprobe", "ffplay"].filter((b) => !Bun.which(b));
+  if (missing.length > 0) {
+    console.error(`jazz: needs ${missing.join(", ")} on PATH (brew install ffmpeg)`);
+    process.exit(1);
+  }
+
   // rendering mode: real pixels by default, --ascii for painted text art,
   // --hd for quadrant blocks (2x2 pixels per cell)
   const mode = args.includes("--ascii") ? "ascii" : args.includes("--hd") ? "hd" : "pixels";
