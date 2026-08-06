@@ -28,6 +28,16 @@ Render each cell as a 2x2 block of pixels using quadrant characters.
 .TP
 .B \-\-ascii
 Render as painted ASCII text art instead of pixels.
+.TP
+.BR \-h ", " \-\-help
+Show help and exit. Handled before the terminal is put into raw mode, so this
+is the one invocation that works without a TTY.
+.PP
+There is no
+.B \-\-json
+and no other machine-readable mode:
+.B jazz
+is a player with no status or listing to serialise.
 .SH KEYS
 .TP
 .B space

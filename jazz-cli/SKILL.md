@@ -11,9 +11,16 @@ forever. Compiled Bun binary at `~/.bun/bin/jazz`. Full offline reference: `man 
 
 ## You cannot run this from a tool call
 
-`jazz` puts stdin into raw mode on startup. Without a real TTY it dies immediately with
-`process.stdin.setRawMode is not a function` — including on `jazz --help`. **Do not spawn it, and do not
-read that crash as a bug in jazz.** Read `man jazz` when you need the reference.
+`jazz` puts stdin into raw mode as soon as it has a source to play. Without a real TTY it dies with
+`process.stdin.setRawMode is not a function`. **Do not spawn it to play anything, and do not read that
+crash as a bug in jazz.**
+
+`jazz --help` is the one exception and is safe from a tool call: help is handled before the terminal
+is touched. Everything else needs a human at the keyboard. Read `man jazz` for the full reference.
+
+**There is no `--json` and no headless read of any kind.** jazz is a player; it has no status, no
+library listing, and nothing to serialise. If a caller needs to know what is in the library, read
+`~/.config/jazz` directly.
 
 Everything below is a command to hand the user, or a file to edit on their behalf.
 

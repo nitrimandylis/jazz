@@ -20,6 +20,26 @@ function debugLog(line: string) {
 }
 
 const LIBRARY = `${homedir()}/.config/jazz`; // where the focus videos live
+
+const HELP = `jazz — focus-video player for the terminal
+
+Usage:
+  jazz                 play from ~/.config/jazz (fzf picker if there are several)
+  jazz <file>          play a local video
+  jazz <url>           play any yt-dlp-supported URL
+  jazz --hd            render as quadrant blocks instead of real pixels
+  jazz --ascii         render as painted ASCII
+  jazz -h, --help      this
+
+Keys:  space pause/resume · ←/→ seek ±10s · q quit
+
+Needs ffmpeg and ffplay on PATH, plus yt-dlp for URLs. Real-pixel rendering
+needs a terminal speaking the Kitty graphics protocol (Ghostty, kitty,
+WezTerm); use --hd or --ascii anywhere else.
+
+jazz has no machine-readable mode: it is a full-screen player that puts the
+terminal into raw mode at startup, so there is nothing for --json to print.
+`;
 const VIDEO_EXTS = [".mp4", ".mkv", ".mov", ".webm", ".m4v"];
 const FPS = 12; // ponytail: fixed frame rate; make it a flag if 12 ever feels wrong
 const RAMP = " .,:;i1tfLCG08@"; // darkest → brightest (dense chars read as bright on a dark theme)
@@ -297,6 +317,9 @@ function pickFromLibrary(): string {
 
 async function main() {
   const args = process.argv.slice(2);
+  // Help has to come first: everything below either opens an fzf picker or
+  // takes over the terminal, so `jazz --help` used to hang instead of printing.
+  if (args.includes("-h") || args.includes("--help")) return void console.log(HELP);
   // rendering mode: real pixels by default, --ascii for painted text art,
   // --hd for quadrant blocks (2x2 pixels per cell)
   const mode = args.includes("--ascii") ? "ascii" : args.includes("--hd") ? "hd" : "pixels";
