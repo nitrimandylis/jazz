@@ -11,8 +11,10 @@ forever. Compiled Bun binary at `~/.bun/bin/jazz`. Full offline reference: `man 
 
 ## You cannot run this from a tool call
 
-`jazz` puts stdin into raw mode as soon as it has a source to play. Without a real TTY it dies with
-`process.stdin.setRawMode is not a function`. **Do not spawn it to play anything, and do not read that
+`jazz` puts stdin into raw mode once it has checked its dependencies and resolved a source to play.
+Without a real TTY it then dies with `process.stdin.setRawMode is not a function`. Earlier failures
+come first: a missing ffmpeg, ffprobe or ffplay prints `jazz: needs <missing> on PATH (brew install
+ffmpeg)` and exits 1, before anything else runs. **Do not spawn it to play anything, and do not read that
 crash as a bug in jazz.**
 
 `jazz --help` is the one exception and is safe from a tool call: help is handled before the terminal
@@ -53,7 +55,8 @@ the moment the library grows.
 
 ## Things that will bite you
 
-- **Needs ffmpeg on PATH** (`brew install ffmpeg`, which brings ffprobe and ffplay), plus `yt-dlp` for
+- **Needs ffmpeg, ffprobe and ffplay on PATH** (`brew install ffmpeg` brings all three; jazz checks up
+  front and exits 1 naming whichever is missing), plus `yt-dlp` for
   URLs and `fzf` for a multi-file library. Default pixel mode needs a Kitty-graphics terminal — Ghostty,
   kitty, or WezTerm. In anything else, `--hd` or `--ascii`.
 - **Resolved URLs are signed and expire in a few hours.** yt-dlp hands back a direct stream link that

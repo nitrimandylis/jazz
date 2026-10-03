@@ -38,6 +38,19 @@ There is no
 and no other machine-readable mode:
 .B jazz
 is a player with no status or listing to serialise.
+.SH DEPENDENCIES
+.BR ffmpeg ,
+.BR ffprobe
+and
+.B ffplay
+are required and checked up front, before the picker or the terminal is
+touched. If any is missing jazz prints
+.B jazz: needs <missing> on PATH (brew install ffmpeg)
+and exits 1.
+.BR yt\-dlp
+is needed only for URLs and
+.BR fzf
+only when the library holds several videos.
 .SH KEYS
 .TP
 .B space
@@ -57,6 +70,19 @@ Write per-frame timing lines to
 .TP
 .I ~/.config/jazz
 Default video library.
+.SH EXIT STATUS
+.TP
+.B 0
+Help was shown, the fzf picker was cancelled, or playback ended with
+.BR q .
+.TP
+.B 1
+ffmpeg, ffprobe or ffplay is not on PATH; there are no videos in
+.IR ~/.config/jazz ;
+several videos are present but fzf is missing; a URL was given but yt\-dlp is
+missing or could not resolve it; the file does not exist
+.RI ( "no such file" );
+or ffprobe could not read it.
 .SH SEE ALSO
 .BR ffmpeg (1),
 .BR ffplay (1),

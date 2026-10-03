@@ -33,7 +33,8 @@ Usage:
 
 Keys:  space pause/resume · ←/→ seek ±10s · q quit
 
-Needs ffmpeg and ffplay on PATH, plus yt-dlp for URLs. Real-pixel rendering
+Needs ffmpeg, ffprobe and ffplay on PATH (checked up front; exits 1 with
+brew install ffmpeg if any is missing), plus yt-dlp for URLs. Real-pixel rendering
 needs a terminal speaking the Kitty graphics protocol (Ghostty, kitty,
 WezTerm); use --hd or --ascii anywhere else.
 

@@ -32,7 +32,9 @@ refits the picture automatically. A dim status line shows state, elapsed/total
 time, and the name: the filename for a local file, the yt-dlp title for a URL.
 
 Dependencies: bun, ffmpeg (which provides ffprobe and ffplay). No mpv. yt-dlp
-only for URLs.
+only for URLs. ffmpeg, ffprobe and ffplay are checked up front, before the
+picker or the terminal is touched: if any is missing, jazz prints
+`jazz: needs <missing> on PATH (brew install ffmpeg)` and exits 1.
 
 Shipped as a standalone compiled binary: `bun run compile` builds jazz.ts
 into ~/.bun/bin/jazz (bun runtime embedded — no repo needed to run it).
